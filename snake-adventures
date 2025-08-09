@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Snake Adventures — Web</title>
+<style>
+  :root{
+    --bg:#071017;
+    --ui:#e6e6e6;
+    --accent:#f5c518;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--ui);font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  #gameWrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;padding:10px;box-sizing:border-box;}
+  canvas{background:#000;border-radius:8px;touch-action:none;}
+  .topbar{width:100%;display:flex;justify-content:space-between;align-items:center;max-width:900px;}
+  .info{font-size:14px;color:var(--ui);}
+  .hint{font-size:13px;color:#bdbdbd}
+  .controls{display:flex;gap:8px;align-items:center;}
+  button{background:#1b2a35;color:var(--ui);border:1px solid rgba(255,255,255,0.05);padding:8px 10px;border-radius:6px;font-size:14px}
+  button.primary{background:linear-gradient(90deg,#2b7a78,#4db6ac);color:#012; font-weight:600}
+  /* Shop modal */
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:linear-gradient(rgba(2,6,10,0.6),rgba(2,6,10,0.8));z-index:40;padding:15px}
+  .panel{background:#071017;width:100%;max-width:900px;border-radius:10px;padding:15px;box-shadow:0 8px 30px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+  .shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:10px;}
+  .skin-card{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.02)}
+  .swatch{width:38px;height:38px;border-radius:6px;border:1px solid rgba(0,0,0,0.4)}
+  .skin-info{flex:1}
+  .code-row{display:flex;gap:8px;align-items:center;margin-top:12px}
+  input[type="text"]{background:#0f1720;border:1px solid rgba(255,255,255,0.04);color:var(--ui);padding:8px;border-radius:6px;flex:1}
+  .small{font-size:13px;color:#cfcfcf}
+  /* Mobile D-pad */
+  .dpad{position:fixed;right:14px;bottom:14px;z-index:30;display:flex;flex-direction:column;gap:6px;}
+  .dpad-row{display:flex;gap:6px;}
+  .dbtn{width:56px;height:56px;border-radius:10px;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--ui);-webkit-user-select:none;user-select:none;touch-action:none}
+  .dpad .center{width:56px;height:56px;opacity:0}
+  @media(min-width:900px){ .dpad{display:none} }
+  /* small helpers */
+  .muted{color:#9aa6b2}
+  .footer-hint{font-size:12px;color:#9aa6b2;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <div class="topbar">
+    <div>
+      <div class="info" id="stats">Очки: 0 | Уровень: 1 | Монеты: 0</div>
+      <div class="hint">Стрелки — движение. Нажми <strong>S</strong> для магазина. (На мобиле — D-pad справа)</div>
+    </div>
+    <div class="controls">
+      <button id="btnShop">Магазин (S)</button>
+      <button id="btnReset">Сброс прогресса</button>
+    </div>
+  </div>
+
+  <canvas id="game" width="800" height="600"></canvas>
+  <div class="footer-hint">Нажми <strong>1–0</strong> в магазине для покупки/выбора скина. Нажми <strong>C</strong> в магазине, чтобы ввести код.</div>
+</div>
+
+<!-- Shop modal -->
+<div id="modal" class="modal" role="dialog" aria-hidden="true">
+  <div class="panel" aria-modal="true">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:18px">Магазин скинов</div>
+        <div class="small" id="coinsLabel">Монеты: 0</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="closeShop">Закрыть (Esc)</button>
+        <button id="clearBtn" style="background:#2b2b2b">Очистить локал</button>
+      </div>
+    </div>
+
+    <div class="shop-grid" id="shopGrid"></div>
+
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+      <div class="small">Кодовое окно (на английском):</div>
+      <div class="code-row">
+        <input type="text" id="codeInput" placeholder="Введи код, затем нажми Применить" />
+        <button id="applyCode" class="primary">Применить (C)</button>
+      </div>
+      <div class="small muted">Введи <strong>stop</strong> → получишь 1,000,000 монет и секретный радужный скин №11 (скрыт в магазине).</div>
+      <div style="margin-top:6px" class="small muted">Подсказка: на мобильных нажми на карточку скина, чтобы купить/выбрать.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile D-pad -->
+<div class="dpad" id="dpad" aria-hidden="false">
+  <div class="dpad-row" style="justify-content:center">
+    <div class="dbtn" data-dir="up">↑</div>
+  </div>
+  <div class="dpad-row">
+    <div class="dbtn" data-dir="left">←</div>
+    <div class="dbtn center"></div>
+    <div class="dbtn" data-dir="right">→</div>
+  </div>
+  <div class="dpad-row" style="justify-content:center">
+    <div class="dbtn" data-dir="down">↓</div>
+  </div>
+</div>
+
+<script>
+/*
+  Snake Adventures — Web HTML5 single file.
+  Features:
+  - Levels/maps
+  - Bonuses minimal (we keep core features)
+  - Coins (10 per food)
+  - Shop with 10 skins (100..1000)
+  - Code "stop" unlocks 1,000,000 coins + secret rainbow skin #11
+  - Mobile touch D-pad
+  - Persistence via localStorage
+*/
+
+// Canvas & grid
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let WIDTH = canvas.width, HEIGHT = canvas.height;
+const CELL = 20;
+const COLS = Math.floor(WIDTH / CELL), ROWS = Math.floor(HEIGHT / CELL);
+
+// Game state (persisted)
+const STORAGE_KEY = 'snake_adventures_v1';
+let state = {
+  coins: 0,
+  unlocked: [0], // skin indices unlocked (0 = default)
+  currentSkin: 0,
+  secretUnlocked: false
+};
+
+// Predefined skins/colors
+const SKINS = [
+  [0,200,0],    //1
+  [0,255,255],  //2
+  [255,0,0],    //3
+  [255,255,0],  //4
+  [255,105,180],//5
+  [0,0,255],    //6
+  [255,140,0],  //7
+  [128,0,128],  //8
+  [139,69,19],  //9
+  [192,192,192] //10
+];
+const skinPrices = [100,200,300,400,500,600,700,800,900,1000];
+const RAINBOW = [[255,0,0],[255,127,0],[255,255,0],[0,255,0],[0,0,255],[75,0,130],[148,0,211]];
+let rainbowIndex = 0;
+
+// Maps (walls) — coords are in grid units (x,y)
+const MAPS = [
+  [], // level 1: empty
+  Array.from({length:25},(_,i)=>[5+i,10]), // level2: horizontal wall
+  (()=>{
+    let arr = [];
+    for(let y=5;y<20;y++) arr.push([15,y]);
+    for(let y=10;y<25;y++) arr.push([25,y]);
+    return arr;
+  })()
+];
+
+// Runtime game variables
+let snake = [[10,10]];
+let dir = [1,0];
+let food = spawnFood();
+let score = 0;
+let level = 0;
+let speed = 10; // ticks per second
+let tickAcc = 0;
+let lastTime = performance.now();
+let gameOver = false;
+let shopOpen = false;
+
+// Load state
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const s = JSON.parse(raw);
+      Object.assign(state, s);
+    }
+  }catch(e){}
+}
+function saveState(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+}
+loadState();
+
+// UI elements
+const statsEl = document.getElementById('stats');
+const btnShop = document.getElementById('btnShop');
+const modal = document.getElementById('modal');
+const shopGrid = document.getElementById('shopGrid');
+const coinsLabel = document.getElementById('coinsLabel');
+const closeShop = document.getElementById('closeShop');
+const codeInput = document.getElementById('codeInput');
+const applyCode = document.getElementById('applyCode');
+const btnReset = document.getElementById('btnReset');
+const clearBtn = document.getElementById('clearBtn');
+
+function colorToCss(c){ return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function drawRect(x,y,w,h,color){ ctx.fillStyle=color; ctx.fillRect(x,y,w,h); }
+
+// Helpers
+function spawnFood(){
+  while(true){
+    const x = Math.floor(Math.random()*COLS);
+    const y = Math.floor(Math.random()*ROWS);
+    // avoid snake & walls
+    if(snake.some(s=>s[0]===x && s[1]===y)) continue;
+    if(MAPS[level].some(w=>w[0]===x && w[1]===y)) continue;
+    return [x,y];
+  }
+}
+
+function posEquals(a,b){ return a[0]===b[0] && a[1]===b[1]; }
+
+function checkCollision(pos){
+  // wall or self (excluding head)
+  if(MAPS[level].some(w=>w[0]===pos[0] && w[1]===pos[1])) return true;
+  for(let i=1;i<snake.length;i++) if(posEquals(snake[i],pos)) return true;
+  return false;
+}
+
+function resetGame(){
+  snake = [[10,10]];
+  dir = [1,0];
+  food = spawnFood();
+  score = 0;
+  level = 0;
+  gameOver = false;
+}
+
+// Input handling
+const keysDown = {};
+window.addEventListener('keydown', (e)=>{
+  if(e.key === 's' || e.key === 'S'){
+    toggleShop(true);
+    return;
+  }
+  if(e.key === 'c' || e.key === 'C'){
+    if(shopOpen){ codeInput.focus(); }
+  }
+  if(shopOpen){
+    // numeric shortcuts 1..0 -> 1..10
+    if(/^[1-9]$/.test(e.key) || e.key === '0'){
+      const idx = (e.key==='0') ? 9 : (parseInt(e.key)-1);
+      buyOrSelect(idx);
+    }
+    if(e.key === 'Escape'){ toggleShop(false); }
+    return;
+  }
+  if(e.key === 'ArrowUp' && !(dir[0]===0 && dir[1]===1)){ dir=[0,-1]; }
+  else if(e.key === 'ArrowDown' && !(dir[0]===0 && dir[1]===-1)){ dir=[0,1]; }
+  else if(e.key === 'ArrowLeft' && !(dir[0]===1 && dir[1]===0)){ dir=[-1,0]; }
+  else if(e.key === 'ArrowRight' && !(dir[0]===-1 && dir[1]===0)){ dir=[1,0]; }
+});
+
+btnShop.addEventListener('click', ()=> toggleShop(true));
+closeShop.addEventListener('click', ()=> toggleShop(false));
+btnReset.addEventListener('click', ()=> { if(confirm('Сбросить игру и прогресс?')){ resetGame(); state = {coins:0,unlocked:[0],currentSkin:0,secretUnlocked:false}; saveState(); renderShop(); }});
+clearBtn.addEventListener('click', ()=> { if(confirm('Полностью очистить локальное хранилище?')){ localStorage.removeItem(STORAGE_KEY); loadState(); resetGame(); saveState(); renderShop(); }});
+
+// Shop rendering & logic
+function renderShop(){
+  shopGrid.innerHTML = '';
+  // normal skins
+  for(let i=0;i<SKINS.length;i++){
+    const card = document.createElement('div'); card.className='skin-card';
+    const sw = document.createElement('div'); sw.className='swatch'; sw.style.background = colorToCss(SKINS[i]);
+    const info = document.createElement('div'); info.className='skin-info';
+    const title = document.createElement('div'); title.textContent = `Скин ${i+1}`;
+    const price = document.createElement('div'); price.className='small muted';
+    const unlocked = state.unlocked.includes(i);
+    price.textContent = unlocked ? 'Куплен' : `${skinPrices[i]} монет`;
+    info.appendChild(title); info.appendChild(price);
+    const btn = document.createElement('button'); btn.textContent = unlocked ? (state.currentSkin===i ? 'Выбран' : 'Выбрать') : 'Купить';
+    btn.onclick = ()=> buyOrSelect(i);
+    card.onclick = ()=> buyOrSelect(i);
+    card.appendChild(sw); card.appendChild(info); card.appendChild(btn);
+    shopGrid.appendChild(card);
+  }
+  // secret skin slot (if unlocked show)
+  if(state.secretUnlocked){
+    const card = document.createElement('div'); card.className='skin-card';
+    const sw = document.createElement('div'); sw.className='swatch';
+    sw.style.background = colorToCss(RAINBOW[rainbowIndex%RAINBOW.length]);
+    const info = document.createElement('div'); info.className='skin-info';
+    const title = document.createElement('div'); title.textContent = `Секретный скин 11`;
+    const price = document.createElement('div'); price.className='small muted';
+    price.textContent = 'Секретный (открыт)';
+    info.appendChild(title); info.appendChild(price);
+    const btn = document.createElement('button'); btn.textContent = (state.currentSkin===10) ? 'Выбран' : 'Выбрать';
+    btn.onclick = ()=> buyOrSelect(10);
+    card.onclick = ()=> buyOrSelect(10);
+    card.appendChild(sw); card.appendChild(info); card.appendChild(btn);
+    shopGrid.appendChild(card);
+  }
+  coinsLabel.textContent = `Монеты: ${state.coins}`;
+}
+
+// buy/select function
+function buyOrSelect(idx){
+  if(idx === 10){ // secret
+    if(!state.secretUnlocked) return;
+    state.currentSkin = 10;
+    saveState(); renderShop();
+    return;
+  }
+  if(state.unlocked.includes(idx)){
+    state.currentSkin = idx;
+    saveState(); renderShop(); return;
+  }
+  const price = skinPrices[idx];
+  if(state.coins >= price){
+    state.coins -= price;
+    state.unlocked.push(idx);
+    state.currentSkin = idx;
+    saveState(); renderShop();
+  } else {
+    alert('Не хватает монет для покупки.');
+  }
+}
+
+// Code apply
+applyCode.addEventListener('click', applyCodeHandler);
+function applyCodeHandler(){
+  const code = codeInput.value.trim().toLowerCase();
+  if(code === 'stop'){
+    state.coins += 1000000;
+    state.secretUnlocked = true;
+    if(!state.unlocked.includes(10)) state.unlocked.push(10);
+    saveState();
+    alert('Код принят — 1,000,000 монет начислено, секретный скин открыт!');
+    codeInput.value='';
+    renderShop();
+  } else {
+    alert('Неверный код.');
+  }
+}
+
+// Toggle shop
+function toggleShop(open){
+  shopOpen = open;
+  modal.style.display = open ? 'flex' : 'none';
+  renderShop();
+  if(open) codeInput.blur();
+}
+
+// Game draw
+function draw(){
+  // background
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0,0,WIDTH,HEIGHT);
+
+  // draw walls
+  ctx.fillStyle = '#ffffff';
+  for(const w of MAPS[level]){
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(w[0]*CELL,
